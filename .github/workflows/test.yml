@@ -64,3 +64,9 @@ jobs:
             Triggered by: @${{ github.triggering_actor }}
 
             ${{ steps.changelog_generate.outputs.changelog }}
+
+      - name: Convert markdown to slacks own markdown format
+        id: slackify_markdown
+        uses: LoveToKnow/slackify-markdown-action@v1.1.1
+        with:
+          text: ${{ needs.prepare.outputs.release_changelog }}
