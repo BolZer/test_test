@@ -1,0 +1,66 @@
+name: "Publish Changelog"
+on:
+  workflow_dispatch:
+
+permissions: read-all
+
+jobs:
+  prepare:
+    runs-on: self-hosted
+    name: Prepare Release for Deployment
+
+    permissions:
+      contents: write
+      pull-requests: read
+
+    outputs:
+      matrix: ${{ steps.determine.outputs.result }}
+      release_id: ${{ steps.publish_release.outputs.id }}
+      tag_name: ${{ steps.generate_tag_name.outputs.tag_name }}
+      encoded_tag_name: ${{ steps.encode_tag_name.outputs.value }}
+      pretty_target_servers: ${{ steps.pretty_server_names.outputs.result }}
+      release_changelog: ${{ steps.changelog_generate.outputs.changelog }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Resolve latest short commit SHA
+        run: echo "SHORT_COMMIT_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV;
+
+      - name: Resolve current year
+        run: echo "YEAR=$(date +%Y)" >> $GITHUB_ENV;
+
+      - name: Build tag name
+        id: generate_tag_name
+        env:
+          RUN: ${{ github.run_number }}
+          ATTEMPT: ${{ github.run_attempt }}
+        run: echo "tag_name=${{ env.YEAR }}.$RUN.$(($ATTEMPT - 1))+${{ env.SHORT_COMMIT_SHA }}" >> $GITHUB_OUTPUT;
+
+      - name: Encode tag name
+        id: encode_tag_name
+        uses: sergeysova/jq-action@v2
+        with:
+          cmd: jq -rn --arg x '${{ steps.generate_tag_name.outputs.tag_name }}' '$x|@uri'
+
+      - name: Generate changelog
+        id: changelog_generate
+        uses: mikepenz/release-changelog-builder-action@v4
+        with:
+          fetchViaCommits: true
+          ignorePreReleases: true
+          toTag: ${{ github.sha }}
+          configuration: .github/changelog-generate-config.json
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        id: publish_release
+        with:
+          draft: false
+          prerelease: false
+          tag_name: ${{ steps.generate_tag_name.outputs.tag_name }}
+          body: |
+            Triggered by: @${{ github.triggering_actor }}
+
+            ${{ steps.changelog_generate.outputs.changelog }}
